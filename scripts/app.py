@@ -33,10 +33,15 @@ FORECAST_JANUARY_CAPTION = (
 )
 HISTORICAL_CAPTION = (
     "Historical colors show observed CalFresh application demand relative to each county's seasonal "
-    "history, using alert thresholds calculated from data through December 2025. Months before March 2019 "
-    "are Gray because at least two earlier observations for the same calendar month are required. Later "
+    "history, using alert thresholds calculated from data through December 2025. The map begins in March 2019 "
+    "because at least two earlier observations for the same calendar month are required. Later "
     "months may also be Gray when data or sufficient historical deviations are unavailable. These are "
     "retrospective classifications, not forecasts made at the time."
+)
+OCTOBER_2025_NOTE = (
+    "October 2025 is Gray for every county because county unemployment data for that month are missing from "
+    "the source data, so the month is not part of the study period. CalFresh application counts for October "
+    "2025 are available."
 )
 
 FLAG_COLOR_MAP = {
@@ -156,6 +161,19 @@ def get_historical_hover(county, date, alert_hover):
     return alert_hover.get((county, date_str))
 
 
+def first_colored_month(alert_labels):
+    """First month in which at least one county has a non-Gray historical label, or None."""
+    dates = [d for (_, d), label in alert_labels.items() if label != "Gray"]
+    return pd.Timestamp(min(dates)) if dates else None
+
+
+def historical_month_note(sel_dt):
+    """Note shown below the Historical Map for months that need an explanation."""
+    if pd.Timestamp(sel_dt) == pd.Timestamp("2025-10-01"):
+        return OCTOBER_2025_NOTE
+    return None
+
+
 def forecast_flags(pred_df, forecast_labels):
     """Forecast-month flag per prediction row, read from forecast_labels_v3.csv (Gray if absent)."""
     return pred_df["county_clean"].map(lambda c: forecast_labels.get(c, "Gray"))
@@ -259,6 +277,10 @@ with tabs[0]:
                 unsafe_allow_html=True)
 
     unique_dates  = snap_df["date"].sort_values().unique()
+    # Drop the leading months before any county has a non-Gray label
+    first_colored = first_colored_month(alert_labels)
+    if first_colored is not None:
+        unique_dates = [d for d in unique_dates if pd.Timestamp(d) >= first_colored]
     date_options  = [pd.Timestamp(d).strftime("%b %Y") for d in unique_dates]
     selected_date = st.selectbox("Select Month", options=date_options,
                                  index=len(date_options) - 1)
@@ -282,6 +304,9 @@ with tabs[0]:
     )
 
     draw_map(filtered_df, title_note=selected_date)
+    month_note = historical_month_note(sel_dt)
+    if month_note:
+        st.info(month_note)
     st.caption(GENERAL_CAPTION)
     st.caption(HISTORICAL_CAPTION)
 
